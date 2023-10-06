@@ -1,7 +1,13 @@
+import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.thymeleaf.TemplateEngine;
+import org.thymeleaf.context.Context;
+import org.thymeleaf.templateresolver.FileTemplateResolver;
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.text.SimpleDateFormat;
@@ -10,6 +16,22 @@ import java.util.TimeZone;
 
 @WebServlet("/time")
 public class TimeServlet extends HttpServlet {
+
+    private TemplateEngine engine;
+
+    @Override
+    public void init() throws ServletException {
+        engine = new TemplateEngine();
+
+        FileTemplateResolver resolver = new FileTemplateResolver();
+        resolver.setPrefix("/templates/");
+        resolver.setSuffix(".html");
+        resolver.setTemplateMode("HTML5");
+        resolver.setOrder(engine.getTemplateResolvers().size());
+        resolver.setCacheable(false);
+        engine.addTemplateResolver(resolver);
+    }
+
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         resp.setCharacterEncoding("UTF-8");
@@ -18,12 +40,26 @@ public class TimeServlet extends HttpServlet {
         String timeZoneId = req.getParameter("timezone");
 
         if (timeZoneId == null || timeZoneId.isEmpty()) {
-            timeZoneId = "+2";
+            Cookie[] cookies = req.getCookies();
+            for (Cookie cookie : cookies) {
+                if (!cookie.getName().equals("lastTimezone")) {
+                    timeZoneId = "+2";
+                } else {
+                    timeZoneId = cookie.getValue();
+                }
+            }
+        } else {
+            Cookie timezoneCookie = new Cookie("lastTimezone", timeZoneId);
+            resp.addCookie(timezoneCookie);
         }
 
         String time = getCurrentTimeInTimeZone(timeZoneId);
 
-        String html = generateHtmlResponse(timeZoneId, time);
+        Context context = new Context();
+        context.setVariable("timezoneId", timeZoneId);
+        context.setVariable("currentTime", time);
+
+        String html = engine.process("time", context);
 
         try (PrintWriter writer = resp.getWriter()) {
             writer.write(html);
@@ -36,14 +72,5 @@ public class TimeServlet extends HttpServlet {
         dateFormat.setTimeZone(timeZone);
         Date date = new Date();
         return dateFormat.format(date);
-    }
-
-    private String generateHtmlResponse(String timeZoneId, String time) {
-        return "<html><body>"
-                + "\n<center>"
-                + "\n<h1>Поточний час в зоні UTC " + timeZoneId + "</h1>"
-                + "\n<p>" + time + "</p>"
-                + "\n</center>"
-                + "\n</body></html>";
     }
 }
